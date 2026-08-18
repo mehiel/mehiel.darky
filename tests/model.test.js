@@ -291,6 +291,12 @@ test("a geocoding reply cannot flood the panel with rows", function () {
   assert.strictEqual(Model.parseGeocoding(JSON.stringify({ results: many })).length, 5)
 })
 
+test("the theme picker is bounded too", function () {
+  var many = []
+  for (var i = 0; i < 5000; i++) many.push({ slug: "t" + i, mode: "dark" })
+  assert.strictEqual(Model.parseThemeScan(JSON.stringify({ themes: many })).themes.length, 200)
+})
+
 test("names from outside are plain text by the time they are labels", function () {
   var results = Model.parseGeocoding(JSON.stringify({
     results: [{
@@ -305,6 +311,11 @@ test("names from outside are plain text by the time they are labels", function (
     themes: [{ slug: "white", name: "<img src=x>", mode: "light" }]
   }))
   assert.strictEqual(scan.themes[0].name.indexOf("<"), -1)
+
+  var located = Model.normalizeSettings({
+    location: { name: "<img src=x>", latitude: 10, longitude: 10, timezone: "UTC" }
+  })
+  assert.strictEqual(located.location.name.indexOf("<"), -1)
 })
 
 console.log(passes + " passed, " + failures + " failed")

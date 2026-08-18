@@ -12,6 +12,9 @@ var SUN_ALTITUDE = -0.833
 // How many city suggestions the panel will ever show, and therefore how many
 // the parser will ever hand it.
 var GEOCODING_LIMIT = 5
+// Likewise for themes. Omarchy ships a couple of dozen and the picker draws a
+// chip for each; this only ever bites a directory that is not a theme library.
+var THEME_LIMIT = 200
 
 var DEFAULTS = {
   mode: "auto",
@@ -150,7 +153,7 @@ function validCoordinates(latitude, longitude) {
 function normalizedLocation(value) {
   if (!value || !validCoordinates(value.latitude, value.longitude)) return null
   return {
-    name: trim(value.name),
+    name: label(value.name),
     latitude: Number(value.latitude),
     longitude: Number(value.longitude),
     timezone: trim(value.timezone)
@@ -446,7 +449,7 @@ function parseThemeScan(raw) {
     var data = JSON.parse(String(raw || "{}"))
     var themes = data.themes instanceof Array ? data.themes : []
     var cleaned = []
-    for (var i = 0; i < themes.length; i++) {
+    for (var i = 0; i < themes.length && cleaned.length < THEME_LIMIT; i++) {
       var theme = themes[i]
       if (!theme || trim(theme.slug) === "") continue
       cleaned.push({

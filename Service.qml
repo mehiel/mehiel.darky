@@ -49,7 +49,9 @@ Item {
   // and therefore has no opinion.
   readonly property string appearance: effectiveMode !== "" ? effectiveMode : appliedMode
 
-  readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/darky"
+  // Same rule the scripts follow, so both halves agree about where state lives.
+  readonly property string stateDir: (Quickshell.env("XDG_STATE_HOME")
+    || Quickshell.env("HOME") + "/.local/state") + "/darky"
   readonly property string settingsPath: stateDir + "/settings.json"
   readonly property string overridePath: stateDir + "/override.json"
   readonly property string modePath: stateDir + "/mode"

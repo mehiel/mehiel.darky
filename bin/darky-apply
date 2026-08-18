@@ -20,6 +20,9 @@ if [[ $MODE != light && $MODE != dark ]]; then
 fi
 
 export PATH="${PATH:-/usr/bin:/bin}:/usr/bin:$HOME/.local/bin"
+# Theme names are checked against plain ASCII ranges; a locale that collates
+# accented letters inside [a-z] would widen that check without saying so.
+export LC_ALL=C
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/darky"
 SETTINGS="$STATE_DIR/settings.json"
@@ -53,7 +56,8 @@ fi
 
 # One transition at a time. omarchy-theme-set takes its own lock around the
 # theme swap, but the background and the hooks after it are ours to serialize.
-[[ -d $STATE_DIR ]] || install -d -m 0700 "$STATE_DIR"
+# Unconditional: this also narrows a directory an older version left at 0755.
+install -d -m 0700 "$STATE_DIR"
 exec 9>"$LOCK"
 flock -w 120 9 || {
   echo "darky-apply: another transition is still running" >&2
@@ -111,7 +115,9 @@ if [[ -f $SETTINGS ]]; then
   if valid_slug "$light_theme" && valid_slug "$dark_theme"; then
     mkdir -p "$CONFIG_DIR"
     # Written aside and renamed: a reader never sees half a file, and a symlink
-    # left in place of the config is replaced rather than written through.
+    # left in place of the config — or of the scratch name — is replaced rather
+    # than written through.
+    rm -f "$PAIR_CONF.new"
     cat >"$PAIR_CONF.new" <<CONF
 # Written by Darky (mehiel.darky). Edit the pair in the Darky panel instead.
 dark=$dark_theme

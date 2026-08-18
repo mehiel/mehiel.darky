@@ -10,6 +10,11 @@
 
 set -uo pipefail
 
+# Theme names are matched against plain ASCII ranges below, and a locale that
+# collates 'é' inside [a-z] would let a name through here that the panel and
+# the apply script would then refuse.
+export LC_ALL=C
+
 OMARCHY="${OMARCHY_PATH:-/usr/share/omarchy}"
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
@@ -30,11 +35,13 @@ colors_file() {
   return 1
 }
 
+# Null-delimited: a wallpaper filename containing a newline is one path, not two
+# half-paths, the second of which would look like an option to whatever ran next.
 backgrounds_for() {
   find -L "$CONFIG_DIR/backgrounds/$1/" "$OMARCHY/themes/$1/backgrounds/" "$CONFIG_DIR/themes/$1/backgrounds/" \
     -maxdepth 1 -type f \
     \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
-    -print 2>/dev/null | sort -u
+    -print0 2>/dev/null | sort -z -u
 }
 
 emit_theme() {
@@ -68,7 +75,7 @@ emit_theme() {
     '{
        slug: $slug, name: $name, mode: $mode,
        background: $background, foreground: $foreground, accent: $accent,
-       backgrounds: ($backgrounds | split("\n") | map(select(length > 0)))
+       backgrounds: ($backgrounds | split("\u0000") | map(select(startswith("/"))))
      }'
 }
 

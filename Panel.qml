@@ -517,6 +517,10 @@ Panel {
             width: parent.width
             visible: root.formError !== "" || (!!root.service && root.service.lastError !== "")
             text: root.formError !== "" ? root.formError : (root.service ? root.service.lastError : "")
+            // An error line quotes paths and names Darky did not choose. Text
+            // sniffs for markup unless told, and its rich-text engine fetches
+            // remote images; this line says the quiet part out loud.
+            textFormat: Text.PlainText
             color: root.urgent
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
