@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Darky's apply path: put the desktop into light or dark.
+#
+#   darky-apply <light|dark> [theme-slug] [background-path]
+#
+# The service passes the theme and background it resolved. With neither, this
+# reads the same settings file the panel writes, which makes the script a
+# working fallback when the shell is not running — the role
+# ~/.local/share/darkman/omarchy-theme.sh used to play.
+
+set -uo pipefail
+
+MODE="${1:-}"
+THEME="${2:-}"
+BACKGROUND="${3:-}"
+
+if [[ $MODE != light && $MODE != dark ]]; then
+  echo "Usage: darky-apply <light|dark> [theme-slug] [background-path]" >&2
+  exit 64
+fi
+
+export PATH="${PATH:-/usr/bin:/bin}:/usr/bin:$HOME/.local/bin"
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/darky"
+SETTINGS="$STATE_DIR/settings.json"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy"
+PAIR_CONF="$CONFIG_DIR/light-dark.conf"
+CURRENT_THEME_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme.name"
+CURRENT_COLORS="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml"
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/darky-apply.lock"
+
+slug() { echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'; }
+
+# A theme name is a directory name here and a bare word in light-dark.conf,
+# which other scripts read with `source`. Anything that is not a plain slug is
+# refused outright rather than escaped, so a hand-edited settings file cannot
+# turn into a command or climb out of the themes directory.
+valid_slug() { [[ $1 =~ ^[a-z0-9][a-z0-9._-]*$ && $1 != *..* ]]; }
+
+if [[ -z $THEME && -f $SETTINGS ]]; then
+  THEME=$(jq -r --arg mode "$MODE" '.[$mode].theme // empty' "$SETTINGS" 2>/dev/null)
+  [[ -n $BACKGROUND ]] || BACKGROUND=$(jq -r --arg mode "$MODE" '.[$mode].background // empty' "$SETTINGS" 2>/dev/null)
+fi
+[[ -n $THEME ]] || THEME=$([[ $MODE == dark ]] && echo tokyo-night || echo white)
+THEME=$(slug "$THEME")
+
+if ! valid_slug "$THEME"; then
+  echo "darky-apply: refusing theme name: $THEME" >&2
+  exit 65
+fi
+
+# One transition at a time. omarchy-theme-set takes its own lock around the
+# theme swap, but the background and the hooks after it are ours to serialize.
+exec 9>"$LOCK"
+flock -w 120 9 || {
+  echo "darky-apply: another transition is still running" >&2
+  exit 75
+}
+
+if [[ ! -d ${OMARCHY_PATH:-/usr/share/omarchy}/themes/$THEME && ! -d $CONFIG_DIR/themes/$THEME ]]; then
+  echo "darky-apply: no such theme: $THEME" >&2
+  exit 66
+fi
+
+# An absent or unreadable background is not a reason to skip the theme change.
+if [[ -n $BACKGROUND && ! -f $BACKGROUND ]]; then
+  echo "darky-apply: background not found, keeping the theme's own: $BACKGROUND" >&2
+  BACKGROUND=""
+fi
+
+current=$(slug "$(cat "$CURRENT_THEME_FILE" 2>/dev/null || true)")
+
+if [[ $current != "$THEME" ]]; then
+  # omarchy-theme-set cycles to the next wallpaper of its own accord. When we
+  # are about to set a specific one anyway, skipping that avoids showing an
+  # image the user did not choose for a second and a half.
+  if [[ -n $BACKGROUND ]]; then
+    OMARCHY_THEME_SKIP_BACKGROUND=1 omarchy-theme-set "$THEME"
+  else
+    omarchy-theme-set "$THEME"
+  fi
+fi
+
+[[ -n $BACKGROUND ]] && omarchy-theme-bg-set "$BACKGROUND" >/dev/null
+
+# omarchy-theme-set-gnome writes color-scheme on every theme change, so this
+# only ever matters when we skipped the theme change and something else moved
+# the setting. It follows the theme rather than our mode, so it can never
+# disagree with Omarchy about what the desktop currently looks like.
+if [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} ]] && command -v gsettings >/dev/null; then
+  theme_mode=$(omarchy-theme-color --file "$CURRENT_COLORS" mode 2>/dev/null)
+  wanted=$([[ $theme_mode == light ]] && echo prefer-light || echo prefer-dark)
+  observed=$(gsettings get org.gnome.desktop.interface color-scheme 2>/dev/null | tr -d "'")
+  [[ $observed == "$wanted" ]] || gsettings set org.gnome.desktop.interface color-scheme "$wanted"
+fi
+
+# Keep the pair file the Super+Alt+T script reads in step with the panel, so a
+# manual flip with the shell down still lands on the themes Darky would pick.
+if [[ -f $SETTINGS ]]; then
+  light_theme=$(slug "$(jq -r '.light.theme // "white"' "$SETTINGS" 2>/dev/null)")
+  dark_theme=$(slug "$(jq -r '.dark.theme // "tokyo-night"' "$SETTINGS" 2>/dev/null)")
+  if valid_slug "$light_theme" && valid_slug "$dark_theme"; then
+    mkdir -p "$CONFIG_DIR"
+    cat >"$PAIR_CONF" <<CONF
+# Written by Darky (mehiel.darky). Edit the pair in the Darky panel instead.
+dark=$dark_theme
+light=$light_theme
+CONF
+  fi
+fi
+
+mkdir -p "$STATE_DIR"
+printf '%s\n' "$MODE" >"$STATE_DIR/mode"
+
+flock -u 9
+
+# Drop-in scripts, run after the desktop already looks right.
+omarchy-hook darky "$MODE" "$THEME" "$BACKGROUND" >/dev/null
+
+# darkman's own contract, so scripts written for it keep working unchanged.
+for dir in "${XDG_DATA_HOME:-$HOME/.local/share}/$MODE-mode.d" "/usr/share/$MODE-mode.d"; do
+  [[ -d $dir ]] || continue
+  for script in "$dir"/*; do
+    [[ -f $script && -x $script ]] || continue
+    "$script" || echo "darky-apply: hook failed: $script" >&2
+  done
+done
+
+exit 0

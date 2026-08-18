@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Flip day and night. Bind this to a key.
+#
+# In Auto this borrows the other mode until the next sunrise or sunset; a pinned
+# Day or Night swaps over for good. With no shell running it falls back to
+# darky-apply, so the bind still works from a TTY.
+
+set -euo pipefail
+
+HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+APPLY="$HERE/darky-apply"
+MODE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/darky/mode"
+
+if result=$(omarchy-shell mehiel.darky toggle 2>/dev/null) && [[ $result == light || $result == dark ]]; then
+  exit 0
+fi
+
+[[ -x $APPLY ]] || {
+  echo "darky-toggle: cannot find darky-apply next to this script" >&2
+  exit 1
+}
+
+current=$(cat "$MODE_FILE" 2>/dev/null || true)
+target=$([[ $current == dark ]] && echo light || echo dark)
+exec "$APPLY" "$target"

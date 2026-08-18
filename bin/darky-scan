@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Everything the Darky panel needs to draw its theme and background pickers,
+# as one JSON document on stdout:
+#
+#   { "current": "<slug>", "themes": [ ... ], "seed": { ... } | null }
+#
+# `seed` is only present on a machine that has never run Darky: it carries the
+# light/dark pair and the location Darky should start from, read out of the
+# darkman setup it replaces, so the first launch behaves like the last boot did.
+
+set -uo pipefail
+
+OMARCHY="${OMARCHY_PATH:-/usr/share/omarchy}"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}"
+SETTINGS="${XDG_STATE_HOME:-$HOME/.local/state}/darky/settings.json"
+
+title_case() {
+  echo "$1" | tr '-' ' ' | sed -E 's/(^| )([a-z])/\1\u\2/g'
+}
+
+# Themes may exist as a stock copy, a user copy, or both (a user directory that
+# only overlays one file is common). colors.toml comes from whichever has one,
+# user first, matching how omarchy-theme-set stacks them.
+colors_file() {
+  local slug=$1
+  for candidate in "$CONFIG_DIR/themes/$slug/colors.toml" "$OMARCHY/themes/$slug/colors.toml"; do
+    [[ -f $candidate ]] && { echo "$candidate"; return 0; }
+  done
+  return 1
+}
+
+backgrounds_for() {
+  find -L "$CONFIG_DIR/backgrounds/$1/" "$OMARCHY/themes/$1/backgrounds/" "$CONFIG_DIR/themes/$1/backgrounds/" \
+    -maxdepth 1 -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
+    -print 2>/dev/null | sort -u
+}
+
+emit_theme() {
+  local slug=$1 colors mode background foreground accent
+  colors=$(colors_file "$slug") || return 0
+
+  # One resolver pass per theme instead of one per colour: the cascade in
+  # omarchy-theme-color is the expensive part, and --all pays it once.
+  local -A palette=()
+  while IFS=$'\t' read -r key value; do
+    [[ -n $key ]] && palette["$key"]="$value"
+  done < <(omarchy-theme-color --file "$colors" --all 2>/dev/null)
+
+  mode=${palette[mode]:-dark}
+  background=${palette[background]:-}
+  foreground=${palette[foreground]:-}
+  accent=${palette[accent]:-$foreground}
+
+  jq -n \
+    --arg slug "$slug" \
+    --arg name "$(title_case "$slug")" \
+    --arg mode "$mode" \
+    --arg background "$background" \
+    --arg foreground "$foreground" \
+    --arg accent "$accent" \
+    --rawfile backgrounds <(backgrounds_for "$slug") \
+    '{
+       slug: $slug, name: $name, mode: $mode,
+       background: $background, foreground: $foreground, accent: $accent,
+       backgrounds: ($backgrounds | split("\n") | map(select(length > 0)))
+     }'
+}
+
+seed() {
+  # Already configured: nothing to seed from.
+  [[ -f $SETTINGS ]] && { echo null; return 0; }
+
+  local light=white dark=tokyo-night lat="" lng=""
+  local pair="$CONFIG_DIR/light-dark.conf"
+  if [[ -f $pair ]]; then
+    light=$(sed -nE 's/^[[:space:]]*light[[:space:]]*=[[:space:]]*"?([^"#]+)"?.*/\1/p' "$pair" | tail -1 | tr -d '[:space:]')
+    dark=$(sed -nE 's/^[[:space:]]*dark[[:space:]]*=[[:space:]]*"?([^"#]+)"?.*/\1/p' "$pair" | tail -1 | tr -d '[:space:]')
+    [[ -n $light ]] || light=white
+    [[ -n $dark ]] || dark=tokyo-night
+  fi
+
+  local darkman="${XDG_CONFIG_HOME:-$HOME/.config}/darkman/config.yaml"
+  if [[ -f $darkman ]]; then
+    lat=$(sed -nE 's/^[[:space:]]*lat:[[:space:]]*(-?[0-9.]+).*/\1/p' "$darkman" | tail -1)
+    lng=$(sed -nE 's/^[[:space:]]*lng:[[:space:]]*(-?[0-9.]+).*/\1/p' "$darkman" | tail -1)
+  fi
+
+  jq -n \
+    --arg light "$light" --arg dark "$dark" \
+    --arg lat "$lat" --arg lng "$lng" \
+    --arg zone "$(timedatectl show -p Timezone --value 2>/dev/null)" \
+    '{
+       light: { theme: ($light | ascii_downcase), background: "" },
+       dark:  { theme: ($dark  | ascii_downcase), background: "" },
+       location: (if ($lat | length) > 0 and ($lng | length) > 0
+                  then { name: ($zone | split("/") | last | gsub("_"; " ")),
+                         latitude: ($lat | tonumber), longitude: ($lng | tonumber),
+                         timezone: $zone }
+                  else null end)
+     }'
+}
+
+slugs=$(
+  {
+    [[ -d $OMARCHY/themes ]] && find "$OMARCHY/themes" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
+    [[ -d $CONFIG_DIR/themes ]] && find "$CONFIG_DIR/themes" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
+  } 2>/dev/null | sort -u
+)
+
+jq -n \
+  --arg current "$(cat "$STATE_DIR/omarchy/current/theme.name" 2>/dev/null)" \
+  --slurpfile themes <(for slug in $slugs; do emit_theme "$slug"; done) \
+  --slurpfile seed <(seed) \
+  '{ current: $current, themes: $themes, seed: ($seed[0] // null) }'

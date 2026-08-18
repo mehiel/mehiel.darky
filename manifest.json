@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "mehiel.darky",
+  "name": "Darky",
+  "version": "1.0.0",
+  "author": "mehiel",
+  "license": "MIT",
+  "description": "Switch your Omarchy theme and wallpaper with the sun. Pick a theme and background for day and for night, follow sunrise and sunset for a city, or set your own times.",
+  "kinds": ["service", "bar-widget"],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Darky",
+    "description": "Sun and moon status with the day/night theme pair and its schedule.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
