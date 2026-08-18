@@ -142,7 +142,11 @@ Panel {
 
   function startGeocode() {
     activeQuery = pendingQuery
-    geocode.command = ["curl", "-fsS", "--max-time", "5",
+    // One host, one protocol, no redirects, and a ceiling on both time and
+    // bytes: a city search has no business going anywhere else or growing large.
+    geocode.command = ["curl", "-fsS",
+      "--proto", "=https", "--tlsv1.2", "--max-redirs", "0",
+      "--max-filesize", "262144", "--max-time", "5",
       "https://geocoding-api.open-meteo.com/v1/search?name="
         + encodeURIComponent(activeQuery) + "&count=5&language=en&format=json"]
     geocode.running = true

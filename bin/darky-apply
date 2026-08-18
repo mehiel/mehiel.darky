@@ -27,7 +27,9 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy"
 PAIR_CONF="$CONFIG_DIR/light-dark.conf"
 CURRENT_THEME_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme.name"
 CURRENT_COLORS="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme/colors.toml"
-LOCK="${XDG_RUNTIME_DIR:-/tmp}/darky-apply.lock"
+# Never /tmp: a predictable name in a world-writable directory is a lock any
+# other local user can hold, and a symlink this script would happily truncate.
+LOCK="${XDG_RUNTIME_DIR:-$STATE_DIR}/darky-apply.lock"
 
 slug() { echo "$1" | tr '[:upper:]' '[:lower:]' | tr ' ' '-'; }
 
@@ -51,6 +53,7 @@ fi
 
 # One transition at a time. omarchy-theme-set takes its own lock around the
 # theme swap, but the background and the hooks after it are ours to serialize.
+[[ -d $STATE_DIR ]] || install -d -m 0700 "$STATE_DIR"
 exec 9>"$LOCK"
 flock -w 120 9 || {
   echo "darky-apply: another transition is still running" >&2
@@ -101,15 +104,17 @@ if [[ -f $SETTINGS ]]; then
   dark_theme=$(slug "$(jq -r '.dark.theme // "tokyo-night"' "$SETTINGS" 2>/dev/null)")
   if valid_slug "$light_theme" && valid_slug "$dark_theme"; then
     mkdir -p "$CONFIG_DIR"
-    cat >"$PAIR_CONF" <<CONF
+    # Written aside and renamed: a reader never sees half a file, and a symlink
+    # left in place of the config is replaced rather than written through.
+    cat >"$PAIR_CONF.new" <<CONF
 # Written by Darky (mehiel.darky). Edit the pair in the Darky panel instead.
 dark=$dark_theme
 light=$light_theme
 CONF
+    mv -f "$PAIR_CONF.new" "$PAIR_CONF"
   fi
 fi
 
-mkdir -p "$STATE_DIR"
 printf '%s\n' "$MODE" >"$STATE_DIR/mode"
 
 flock -u 9
