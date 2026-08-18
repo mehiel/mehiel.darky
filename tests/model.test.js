@@ -282,5 +282,30 @@ test("geocoding results carry a readable name and a timezone", function () {
   assert.strictEqual(results[0].timezone, "Europe/Athens")
 })
 
+test("a geocoding reply cannot flood the panel with rows", function () {
+  // One delegate per result, in the process that draws the whole desktop: the
+  // parser hands over no more than the five the query asked for.
+  var many = []
+  for (var i = 0; i < 5000; i++)
+    many.push({ name: "Town " + i, latitude: 10, longitude: 10, timezone: "UTC" })
+  assert.strictEqual(Model.parseGeocoding(JSON.stringify({ results: many })).length, 5)
+})
+
+test("names from outside are plain text by the time they are labels", function () {
+  var results = Model.parseGeocoding(JSON.stringify({
+    results: [{
+      name: "<img src=\"http://tracker.example/x.png\">",
+      country: "<b>Nowhere</b>",
+      latitude: 10, longitude: 10, timezone: "UTC"
+    }]
+  }))
+  assert.strictEqual(results[0].name.indexOf("<"), -1)
+
+  var scan = Model.parseThemeScan(JSON.stringify({
+    themes: [{ slug: "white", name: "<img src=x>", mode: "light" }]
+  }))
+  assert.strictEqual(scan.themes[0].name.indexOf("<"), -1)
+})
+
 console.log(passes + " passed, " + failures + " failed")
 process.exit(failures === 0 ? 0 : 1)

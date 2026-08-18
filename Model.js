@@ -9,6 +9,9 @@ var OBLIQUITY = 23.4397
 // This is the altitude darkman transitions on, so cutting over keeps the same
 // moment.
 var SUN_ALTITUDE = -0.833
+// How many city suggestions the panel will ever show, and therefore how many
+// the parser will ever hand it.
+var GEOCODING_LIMIT = 5
 
 var DEFAULTS = {
   mode: "auto",
@@ -22,6 +25,14 @@ var DEFAULTS = {
 
 function trim(value) {
   return String(value === undefined || value === null ? "" : value).replace(/^\s+|\s+$/g, "")
+}
+
+// Text from a theme directory or a geocoding response ends up in QML Text,
+// which sniffs for markup unless told otherwise and will happily fetch a
+// remote <img src>. Dropping the one character that starts a tag is enough to
+// keep every label plain, wherever it is rendered.
+function label(value) {
+  return trim(value).replace(/</g, "")
 }
 
 // Theme slugs become directory names and land in light-dark.conf, which other
@@ -440,7 +451,7 @@ function parseThemeScan(raw) {
       if (!theme || trim(theme.slug) === "") continue
       cleaned.push({
         slug: slug(theme.slug),
-        name: trim(theme.name) || slug(theme.slug),
+        name: label(theme.name) || slug(theme.slug),
         mode: theme.mode === "light" ? "light" : "dark",
         background: trim(theme.background) || "#000000",
         foreground: trim(theme.foreground) || "#ffffff",
@@ -474,12 +485,14 @@ function parseGeocoding(raw) {
     var data = JSON.parse(String(raw || "{}"))
     var results = data.results || []
     var out = []
-    for (var i = 0; i < results.length; i++) {
+    // The query asks for five. A reply that ignores that would otherwise become
+    // one row of UI per entry, in the process that draws the whole desktop.
+    for (var i = 0; i < results.length && out.length < GEOCODING_LIMIT; i++) {
       var item = results[i]
       var place = normalizedLocation(item)
       if (!place || !item.name) continue
       var detail = [item.admin1, item.country].filter(function (part) { return !!part }).join(", ")
-      place.name = trim(item.name) + (detail ? ", " + detail : "")
+      place.name = label(item.name) + (detail ? ", " + label(detail) : "")
       place.timezone = trim(item.timezone)
       out.push(place)
     }

@@ -81,7 +81,13 @@ if [[ $current != "$THEME" ]]; then
     OMARCHY_THEME_SKIP_BACKGROUND=1 omarchy-theme-set "$THEME"
   else
     omarchy-theme-set "$THEME"
-  fi
+  fi || {
+    # The desktop did not change, so nothing downstream should claim it did:
+    # no pair file, no recorded mode, no hooks. The service sees the failure
+    # and leaves the transition outstanding.
+    echo "darky-apply: omarchy-theme-set failed for $THEME" >&2
+    exit 70
+  }
 fi
 
 [[ -n $BACKGROUND ]] && omarchy-theme-bg-set "$BACKGROUND" >/dev/null

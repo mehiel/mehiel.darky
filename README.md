@@ -112,6 +112,8 @@ omarchy-shell mehiel.darky auto      # drop the override, return to the schedule
 omarchy-shell mehiel.darky modeDay   # or: modeNight, modePaused, modeAuto — persistent
 omarchy-shell mehiel.darky apply     # re-apply the current mode
 omarchy-shell mehiel.darky refresh   # rescan installed themes and backgrounds
+
+omarchy-shell mehiel.darky.panel open    # or: close, toggle — the panel window
 ```
 
 ## Configuration

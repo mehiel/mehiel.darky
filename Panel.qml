@@ -10,6 +10,7 @@ import "Model.js" as Model
 Panel {
   id: root
   moduleName: "mehiel.darky"
+  ipcTarget: "mehiel.darky.panel"
   manageIpc: false
 
   property var hostWidget: null
@@ -202,8 +203,11 @@ Panel {
     }
   }
 
+  // Namespaced under the plugin id like every first-party panel: the service
+  // already answers to "mehiel.darky", so the window gets its own target rather
+  // than squatting a bare word any other plugin could claim.
   IpcHandler {
-    target: "darky"
+    target: "mehiel.darky.panel"
 
     function open(): void { root.open() }
     function close(): void { root.close() }

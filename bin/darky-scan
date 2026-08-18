@@ -39,6 +39,10 @@ backgrounds_for() {
 
 emit_theme() {
   local slug=$1 colors mode background foreground accent
+  # Darky can only apply a name it can also write into light-dark.conf, which
+  # other scripts read with `source`. A directory outside that charset is left
+  # out of the picker rather than offered and then refused on apply.
+  [[ $slug =~ ^[a-z0-9][a-z0-9._-]*$ && $slug != *..* ]] || return 0
   colors=$(colors_file "$slug") || return 0
 
   # One resolver pass per theme instead of one per colour: the cascade in
@@ -102,7 +106,9 @@ seed() {
      }'
 }
 
-slugs=$(
+# One line per directory, read as lines: a theme directory with a space in its
+# name is one theme, and one called '*' is a name rather than a glob.
+mapfile -t slugs < <(
   {
     [[ -d $OMARCHY/themes ]] && find "$OMARCHY/themes" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
     [[ -d $CONFIG_DIR/themes ]] && find "$CONFIG_DIR/themes" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
@@ -111,6 +117,6 @@ slugs=$(
 
 jq -n \
   --arg current "$(cat "$STATE_DIR/omarchy/current/theme.name" 2>/dev/null)" \
-  --slurpfile themes <(for slug in $slugs; do emit_theme "$slug"; done) \
+  --slurpfile themes <(for slug in "${slugs[@]}"; do emit_theme "$slug"; done) \
   --slurpfile seed <(seed) \
   '{ current: $current, themes: $themes, seed: ($seed[0] // null) }'
