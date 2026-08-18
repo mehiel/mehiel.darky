@@ -25,12 +25,6 @@ fine, portable daemon and Darky borrows its ideas outright — including its
 keeps working. Darky just moves the job inside the shell, where the themes and
 wallpapers already live, and puts all of it behind one panel.
 
-**Looking for something smaller?** [NightMan](https://github.com/codefriendly/omarchy-nightman)
-does the same schedule but only flips `org.gnome.desktop.interface color-scheme`,
-leaving your Omarchy theme and wallpaper alone. If you want apps to follow the
-sun while your theme stays put, use NightMan instead — it is the lighter tool for
-that job, and Darky learned a lot from reading it.
-
 ## Requirements
 
 - Omarchy 4 (Quattro) or newer, with the Quickshell plugin system
